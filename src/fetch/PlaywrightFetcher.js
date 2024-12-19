@@ -5,7 +5,7 @@ import { logger } from '../log/logger.js';
 import { Document } from '../document/Document.js';
 import { TagRemovingMinimizer } from '../min/TagRemovingMinimizer.js';
 import { BaseFetcher } from './BaseFetcher.js';
-import { analyzePagination } from './prompts.js';
+import { analyzePagination, analyzePaginationCheck } from './prompts.js';
 import { createChannel } from '../util.js';
 
 export const PlaywrightFetcher = class extends BaseFetcher {
@@ -188,6 +188,32 @@ Respond ONLY in JSON, with no explanation. Your response will be machine consume
     return false;
 }
 
+  async _promptPaginationCheck(html) {
+      const context = {
+        html: html,
+      };
+
+      const prompts = await analyzePaginationCheck.renderMulti(
+        context, 'html', this.ai, this.cache);
+
+    let answer;
+    try {
+      answer = await this.ai.ask(prompt, { format: 'json' });
+    } catch(e) {
+      logger.error(`${this} Got AI error during pagination check, ignore (${e})`);
+      return false;
+    }
+
+    logger.warn(`${this} Got pagination answer: ${JSON.stringify(answer.partial, null, 2)}`);
+
+    // if (answer?.partial?.hasPaginationCheck &&
+    //     answer?.partial?.paginationAnalysis
+    //    ) {
+    //   if (answer?.partial?.didPaginate) return true;
+    // }
+
+    // return false;
+}
 
   async *paginate(url, page, options) {
     // Initial load
@@ -289,6 +315,11 @@ Respond ONLY in JSON, with no explanation. Your response will be machine consume
         logger.info(`${this} got pagination doc ${doc} on iteration ${i}`);
         if (doc) {
           try {
+
+            // TODO: Do something with check, for now see what AI returns.
+            await this._promptPaginationCheck(doc.body);
+
+
             // Compare current page HTML with previous
             const didPaginate = await this._compareHtml(doc.body, previousBody);
 
