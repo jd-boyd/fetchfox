@@ -138,6 +138,57 @@ export const PlaywrightFetcher = class extends BaseFetcher {
     return doc;
   }
 
+  async _compareHtml(html1, html2) {
+
+    const prompt = `You are part of a web scraping program. You are given two sets of HTML, and your goal is to analyze if pagination happened between the pages.
+
+Response with JSON as follows:
+
+{
+  "didPaginate": boolean,
+  "paginationAnalysis": string,
+}
+
+Each field should be filled as follows:
+
+- "didPaginate": true or false
+- "paginationAnalysis": 10-30 word english description of evidence that pagination happened
+
+Follow these important rules:
+- Make your code robust, and do not paginate if it is not possible
+
+IMPORTANT:
+- "paginationJavascript"  will be a parameter to new Function(). Therefore, do NOT give a function signature.
+
+>>>> Analyze this before HTML:
+${html1}
+
+>>>> Analyze this after HTML:
+${html2}
+
+Respond ONLY in JSON, with no explanation. Your response will be machine consumed by JSON.parse()
+`;
+
+    let answer;
+    try {
+      answer = await this.ai.ask(prompt, { format: 'json' });
+    } catch(e) {
+      logger.error(`${this} Got AI error during pagination, ignore`);
+      return false;
+    }
+
+    logger.debug(`${this} Got pagination answer: ${JSON.stringify(answer.partial, null, 2)}`);
+
+    if (answer?.partial?.didPaginate &&
+        answer?.partial?.paginationAnalysis
+       ) {
+      if (answer?.partial?.didPaginate) return true;
+    }
+
+    return false;
+}
+
+
   async *paginate(url, page, options) {
     // Initial load
     try {
@@ -152,6 +203,7 @@ export const PlaywrightFetcher = class extends BaseFetcher {
       return;
     }
 
+    let previousBody = doc.body;
     const iterations = options?.maxPages || 0;
 
     // Kick off job for pages 2+
@@ -236,8 +288,23 @@ export const PlaywrightFetcher = class extends BaseFetcher {
 
         logger.info(`${this} got pagination doc ${doc} on iteration ${i}`);
         if (doc) {
+          try {
+            // Compare current page HTML with previous
+            const didPaginate = await this._compareHtml(doc.body, previousBody);
+
+            if (!didPaginate) {
+              logger.error(`${this} page content did not change, stopping pagination`);
+              break;
+            } else {
+              logger.error(`${this} page content did change, continuing pagination`);
+            }
+
+          }catch(e) {
+            logger.error(`${this} got compare error on iteration #${i}: ${e}`);
+          }
           channel.send({ doc });
         }
+        previousBody = doc.body;
       }
 
       channel.end();
