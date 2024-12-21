@@ -195,10 +195,11 @@ Respond ONLY in JSON, with no explanation. Your response will be machine consume
 
       const prompts = await analyzePaginationCheck.renderMulti(
         context, 'html', this.ai, this.cache);
+      logger.warn(`${this} analyze chunks for pagination (${prompts.length})`);
 
     let answer;
     try {
-      answer = await this.ai.ask(prompt, { format: 'json' });
+      answer = await this.ai.ask(prompts[0], { format: 'json' });
     } catch(e) {
       logger.error(`${this} Got AI error during pagination check, ignore (${e})`);
       return false;
@@ -321,7 +322,7 @@ Respond ONLY in JSON, with no explanation. Your response will be machine consume
 
 
             // Compare current page HTML with previous
-            const didPaginate = await this._compareHtml(doc.body, previousBody);
+            const didPaginate = true; //await this._compareHtml(doc.body, previousBody);
 
             if (!didPaginate) {
               logger.error(`${this} page content did not change, stopping pagination`);
